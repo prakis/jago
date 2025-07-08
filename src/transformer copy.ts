@@ -2,7 +2,7 @@ import traverse from "@babel/traverse";
 import * as t from "@babel/types";
 import { File } from "@babel/types";
 
-// Intermediate representation for Go
+// IR for Go code
 export type JaGoNode =
   | { type: "GoRoutine"; callee: string }
   | { type: "ChannelDeclaration"; varName: string }
@@ -42,6 +42,8 @@ export function transformAST(ast: File): JaGoNode[] {
             const obj = call.callee.object.name;
             const prop = call.callee.property.name;
             body.push(`${obj}.${prop}(${args.join(", ")})`);
+          } else {
+            body.push("/* unknown function call */");
           }
         }
       }
@@ -50,8 +52,6 @@ export function transformAST(ast: File): JaGoNode[] {
     },
 
     VariableDeclaration(path) {
-      if (path.getFunctionParent()) return;
-
       for (const decl of path.node.declarations) {
         if (t.isIdentifier(decl.id)) {
           const name = decl.id.name;
@@ -67,10 +67,9 @@ export function transformAST(ast: File): JaGoNode[] {
     },
 
     CallExpression(path) {
-      if (path.getFunctionParent()) return;
-
       const calleeNode = path.node.callee;
 
+      // Handle __go(worker())
       if (
         t.isIdentifier(calleeNode, { name: "__go" }) &&
         path.node.arguments.length === 1 &&
@@ -83,6 +82,7 @@ export function transformAST(ast: File): JaGoNode[] {
         return;
       }
 
+      // Handle channel()
       if (t.isIdentifier(calleeNode, { name: "channel" })) {
         const parent = path.parentPath?.node;
         if (t.isVariableDeclarator(parent) && t.isIdentifier(parent.id)) {
@@ -91,14 +91,14 @@ export function transformAST(ast: File): JaGoNode[] {
         return;
       }
 
+      // Handle normal calls
       const args = path.node.arguments.map(arg =>
         t.isExpression(arg) ? printExpr(arg) : "/* complex */"
       );
 
-      if (t.isIdentifier(calleeNode)) {
-        const name = (calleeNode as t.Identifier).name;
-        output.push({ type: "FunctionCall", name, args });
-      } else if (
+    if (t.isIdentifier(calleeNode)) {
+    output.push({ type: "FunctionCall", name: (calleeNode as t.Identifier).name, args });
+    } else if (
         t.isMemberExpression(calleeNode) &&
         t.isIdentifier(calleeNode.object) &&
         t.isIdentifier(calleeNode.property)
@@ -113,6 +113,7 @@ export function transformAST(ast: File): JaGoNode[] {
   return output;
 }
 
+// Safely converts expressions to string
 function printExpr(expr: t.Expression): string {
   if (t.isIdentifier(expr)) return expr.name;
   if (t.isStringLiteral(expr)) return `"${expr.value}"`;

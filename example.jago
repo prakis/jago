@@ -1,5 +1,5 @@
 function greet(name) {
-  print("Hello, " + name);
+  print( name);
 }
 
 let user = "JaGo";
