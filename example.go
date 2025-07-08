@@ -1,12 +1,12 @@
 package main
 
+func greet(name) {
+  print("Hello, " + name)
+}
+
 func main() {
-  // Function declarations not yet supported
-  // Unknown code: print("Hello, " + name);
-  print(/* complex */)
-  user := "JaGo";
-  // Unknown code: greet(user);
+  print("Hello, " + name)
+  user := "JaGo"
   greet(user)
-  // Unknown code: print("Done");
   print("Done")
 }
