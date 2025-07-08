@@ -1,0 +1,2 @@
+# jago
+JaGo language
