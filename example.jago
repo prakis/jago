@@ -1,0 +1,9 @@
+function greet(name) {
+  print("Hello, " + name);
+}
+
+let user = "JaGo";
+
+greet(user);
+
+print("Done");
