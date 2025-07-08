@@ -1,11 +1,13 @@
 package main
 
-func greet(name) {
-  print(name)
+func greet(name string) {
+  print("Hello, " + name)
 }
 
 func main() {
-  user := "JaGo"
-  greet(user)
+  name := "JaGo"
+  age := 25
+  greet(name)
+  print(age)
   print("Done")
 }

@@ -1,9 +1,11 @@
-function greet(name) {
-  print( name);
+let name: string = "JaGo"
+let age: int = 25
+
+function greet(name: string) {
+  print("Hello, " + name)
 }
 
-let user = "JaGo";
+greet(name)
 
-greet(user);
-
-print("Done");
+print(age)
+print("Done")

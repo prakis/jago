@@ -7,8 +7,13 @@ export type JaGoNode =
   | { type: "GoRoutine"; callee: string }
   | { type: "ChannelDeclaration"; varName: string }
   | { type: "FunctionCall"; name: string; args: string[] }
-  | { type: "FunctionDeclaration"; name: string; params: string[]; body: string[] }
-  | { type: "VariableDeclaration"; name: string; value: string };
+  | {
+      type: "FunctionDeclaration";
+      name: string;
+      params: { name: string; type: string }[];
+      body: string[];
+    }
+  | { type: "VariableDeclaration"; name: string; varType: string; value: string };
 
 export function transformAST(ast: File): JaGoNode[] {
   const output: JaGoNode[] = [];
@@ -16,9 +21,39 @@ export function transformAST(ast: File): JaGoNode[] {
   traverse(ast, {
     FunctionDeclaration(path) {
       const name = path.node.id?.name ?? "anon";
-      const params = path.node.params.map(p =>
-        t.isIdentifier(p) ? p.name : "param"
-      );
+
+      const params = path.node.params.map(p => {
+        if (!t.isIdentifier(p)) {
+          throw new Error(`Parameter is not an identifier`);
+        }
+
+        const id = p as t.Identifier;
+
+        const annotation = id.typeAnnotation;
+        if (!annotation || !t.isTSTypeAnnotation(annotation)) {
+          throw new Error(`Missing or unsupported type for parameter: ${id.name}`);
+        }
+
+        const tsType = annotation.typeAnnotation;
+
+        let type: string;
+        if (t.isTSStringKeyword(tsType)) {
+          type = "string";
+        } else if (t.isTSNumberKeyword(tsType)) {
+          type = "int";
+        } else if (t.isTSBooleanKeyword(tsType)) {
+          type = "bool";
+        } else if (t.isTSTypeReference(tsType) && t.isIdentifier(tsType.typeName)) {
+          type = tsType.typeName.name;
+        } else {
+          throw new Error(`Unsupported type annotation for parameter: ${id.name}`);
+        }
+
+        return {
+          name: id.name,
+          type,
+        };
+      });
 
       const body: string[] = [];
 
@@ -32,16 +67,17 @@ export function transformAST(ast: File): JaGoNode[] {
             t.isExpression(arg) ? printExpr(arg) : "/* complex */"
           );
 
-          if (t.isIdentifier(call.callee)) {
-            body.push(`${call.callee.name}(${args.join(", ")})`);
+          const callee = call.callee;
+          if (t.isIdentifier(callee)) {
+            body.push(`${callee.name}(${args.join(", ")})`);
           } else if (
-            t.isMemberExpression(call.callee) &&
-            t.isIdentifier(call.callee.object) &&
-            t.isIdentifier(call.callee.property)
+            t.isMemberExpression(callee) &&
+            t.isIdentifier(callee.object) &&
+            t.isIdentifier(callee.property)
           ) {
-            const obj = call.callee.object.name;
-            const prop = call.callee.property.name;
-            body.push(`${obj}.${prop}(${args.join(", ")})`);
+            body.push(
+              `${callee.object.name}.${callee.property.name}(${args.join(", ")})`
+            );
           }
         }
       }
@@ -53,61 +89,69 @@ export function transformAST(ast: File): JaGoNode[] {
       if (path.getFunctionParent()) return;
 
       for (const decl of path.node.declarations) {
-        if (t.isIdentifier(decl.id)) {
-          const name = decl.id.name;
-          let value = "0";
+        if (
+          t.isIdentifier(decl.id) &&
+          decl.id.typeAnnotation &&
+          t.isTSTypeAnnotation(decl.id.typeAnnotation)
+        ) {
+          const tsType = decl.id.typeAnnotation.typeAnnotation;
 
-          if (decl.init && t.isExpression(decl.init)) {
-            value = printExpr(decl.init);
+          let varType: string;
+
+          if (t.isTSStringKeyword(tsType)) {
+            varType = "string";
+          } else if (t.isTSNumberKeyword(tsType)) {
+            varType = "int";
+          } else if (t.isTSBooleanKeyword(tsType)) {
+            varType = "bool";
+          } else if (t.isTSTypeReference(tsType) && t.isIdentifier(tsType.typeName)) {
+            varType = tsType.typeName.name;
+          } else {
+            throw new Error(`Unsupported type annotation`);
           }
 
-          output.push({ type: "VariableDeclaration", name, value });
+          const name = decl.id.name;
+          const value = decl.init && t.isExpression(decl.init)
+            ? printExpr(decl.init)
+            : "0";
+
+          output.push({ type: "VariableDeclaration", name, varType, value });
+        } else {
+          throw new Error(`Missing or unsupported type in variable declaration`);
         }
       }
     },
 
-    CallExpression(path) {
-      if (path.getFunctionParent()) return;
+CallExpression(path) {
+  if (path.getFunctionParent()) return;
 
-      const calleeNode = path.node.callee;
+  const { callee, arguments: argsList } = path.node;
 
-      if (
-        t.isIdentifier(calleeNode, { name: "__go" }) &&
-        path.node.arguments.length === 1 &&
-        t.isCallExpression(path.node.arguments[0])
-      ) {
-        const inner = path.node.arguments[0];
-        if (t.isCallExpression(inner) && t.isIdentifier(inner.callee)) {
-          output.push({ type: "GoRoutine", callee: inner.callee.name });
-        }
-        return;
-      }
+  const args = argsList.map(arg =>
+    t.isExpression(arg) ? printExpr(arg) : "/* complex */"
+  );
 
-      if (t.isIdentifier(calleeNode, { name: "channel" })) {
-        const parent = path.parentPath?.node;
-        if (t.isVariableDeclarator(parent) && t.isIdentifier(parent.id)) {
-          output.push({ type: "ChannelDeclaration", varName: parent.id.name });
-        }
-        return;
-      }
+  if (t.isIdentifier(callee)) {
+    output.push({
+      type: "FunctionCall",
+      name: callee.name,
+      args,
+    });
+  } else if (
+    t.isMemberExpression(callee) &&
+    t.isIdentifier(callee.object) &&
+    t.isIdentifier(callee.property)
+  ) {
+    const name = `${callee.object.name}.${callee.property.name}`;
+    output.push({
+      type: "FunctionCall",
+      name,
+      args,
+    });
+  }
+}
 
-      const args = path.node.arguments.map(arg =>
-        t.isExpression(arg) ? printExpr(arg) : "/* complex */"
-      );
-
-      if (t.isIdentifier(calleeNode)) {
-        const name = (calleeNode as t.Identifier).name;
-        output.push({ type: "FunctionCall", name, args });
-      } else if (
-        t.isMemberExpression(calleeNode) &&
-        t.isIdentifier(calleeNode.object) &&
-        t.isIdentifier(calleeNode.property)
-      ) {
-        const obj = calleeNode.object.name;
-        const prop = calleeNode.property.name;
-        output.push({ type: "FunctionCall", name: `${obj}.${prop}`, args });
-      }
-    },
+,
   });
 
   return output;
@@ -117,10 +161,11 @@ function printExpr(expr: t.Expression): string {
   if (t.isIdentifier(expr)) return expr.name;
   if (t.isStringLiteral(expr)) return `"${expr.value}"`;
   if (t.isNumericLiteral(expr)) return `${expr.value}`;
+  if (t.isBooleanLiteral(expr)) return `${expr.value}`;
   if (t.isBinaryExpression(expr)) {
     const left = t.isExpression(expr.left) ? printExpr(expr.left) : "/* left */";
     const right = t.isExpression(expr.right) ? printExpr(expr.right) : "/* right */";
-    return `${left} + ${right}`;
+    return `${left} ${expr.operator} ${right}`;
   }
   return "/* complex expr */";
 }
