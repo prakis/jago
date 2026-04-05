@@ -1,17 +1,17 @@
 # JaGo Language
 
-**JaGo** is a JavaScript-like language that transpiles to native Go code. It brings JavaScript syntax and simplicity while taking advantage of Go's performance, concurrency, and native compilation.
+**JaGo** is a JavaScript-like language that transpiles to Go code. Aim is to compile javascript code to native binaries for performance.
 
 ---
 
-## ✅ Features (as of now)
+## Features (as of now)
 
-- ✅ Variable declarations with explicit types (`string`, `int`, `bool`)
-- ✅ Function declarations with typed parameters
-- ✅ Function calls
-- ✅ Go-style `print()` function (maps directly to Go's `print()`)
-- ✅ Transpiles to valid Go code
-- ✅ Generates `.go` file and compiles with Go compiler
+-  Variable declarations with explicit types (`string`, `int`, `bool`)
+-  Function declarations with typed parameters
+-  Function calls
+-  Go-style `print()` function (maps directly to Go's `print()`)
+-  Transpiles to valid Go code
+-  Generates `.go` file and compiles with Go compiler
 
 ---
 
@@ -30,6 +30,7 @@ greet(name)
 print(age)
 print("Done")
 ```
+
 ## To compile .jago to .go file
 After pulling the code and running npm install
 
@@ -37,4 +38,9 @@ After pulling the code and running npm install
 
 This will generate example.go file
 
+To compile the example.go run (assuming you already have go compiler installed, if not get it from https://go.dev/dl/ )
+
+```go build example.go```
+
+this will produce a binary example.exe
 
